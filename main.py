@@ -62,7 +62,6 @@ def _run_env_once(vict_folder, env_folder, config_ag_folder):
             data_csv="data.csv",
             modelo_sobr="modelo_sobrevivencia.pkl",
             modelo_tria="modelo_triagem.pkl",
-            n_clusters=3,
             env_config_path="env_config.txt",
         )
         rescuers.append(resc)
@@ -92,10 +91,6 @@ def main(vict_folder, env_folder, config_ag_folder):
 
 
 if __name__ == "__main__":
-    print("------------------")
-    print("--- INICIO SMA ---")
-    print("------------------")
-
     # dataset com sinais vitais das vitimas
     vict_folder = os.getcwd()
 
