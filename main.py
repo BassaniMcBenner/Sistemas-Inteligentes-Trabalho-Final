@@ -8,7 +8,6 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-
 def resumo_exploracao(rescuers):
     """
     mostra as informacoes da exploracao.

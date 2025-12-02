@@ -15,7 +15,13 @@ import joblib
 from sklearn.cluster import KMeans
 import matplotlib.pyplot as plt
 
+import random
+
+from queue import PriorityQueue
+
 # =========================== Utilitários de IO ===========================
+
+
 
 
 def carregar_base(path: str) -> Tuple[int, int]:
@@ -38,6 +44,40 @@ def carregar_base(path: str) -> Tuple[int, int]:
                         pass
                 break
     return bx, by
+
+
+
+
+##  ---   Não implementei ainda pq tava tentando fazer eles andarem e voltarem para a base -----
+
+def h_score():
+    """Calcula o h_score faltante"""
+    pass
+
+def aestrela():
+ 
+    pass
+
+
+
+##  ---    cria uma classe para empilhar as posições já visitadas para poder voltar
+
+"""   ???      Ou poderia tbm voltar pelo próprio mapa que passou para os socorristas? 
+tinha pensado nisso, mas tava tentando essa lógica aqui primeir                      ???     """
+
+class Stack:
+    def __init__(self):
+        self.items = []
+
+    def push(self, item):
+        self.items.append(item)
+
+    def pop(self):
+        if not self.is_empty():
+            return self.items.pop()
+
+    def is_empty(self):
+        return len(self.items) == 0
 
 
 ## Classe que define o Agente Rescuer com um plano fixo
@@ -90,11 +130,30 @@ class Rescuer(AbstAgent):
         # Registro global de socorristas (para round-robin de clusters)
         Rescuer.registry.append(self)
 
+
+        ##   ----  criei essas variáveis a mais, mas ainda não terminei  ----
+
+        self.plan = [] 
+        self.visitados = set()  # posições visitadas
+        self._frontier = []  # pilha de nós: [(pos, [vizinhos (ordem/cache)])]
+        self.custo_volta = 1.05  # margem para custo de volta
+        self.margem_seguranca = 1.575  # margem de seguranca
+
+        self.walk_stack = Stack() 
+
+        self.x = 0
+        self.y = 0
+        self.current_index = 0 
+ 
     def recebe_mapa(self, explorer_name, part_map, part_victims):
         """
         o explorador entrega as info do mapa e vitimas que ele tem para os rescuers
         """
         self.pedaco_mapa.append(part_map)
+        # with open(r'C:\Users\User\Desktop\SI_finalproject\Sistemas-Inteligentes-Trabalho-Final\data.csv',
+        #            "w") as f:
+        
+
         self._victs_parts.append(part_victims)
         self.finalizado += 1
 
@@ -298,13 +357,196 @@ class Rescuer(AbstAgent):
         except Exception as e:
             print("falha no salvamento visual", e)
 
-        self.set_state(VS.IDLE)
+        self.set_state(VS.ACTIVE)
+
+
+        # self.go_save_victims(mapa_unificado, vitimas_unificadas)
+    
+
+
+    def custo_estimado_min(self, dx, dy):
+        """
+        Retorna o custo estimado para dar um passo
+        """
+        if dx != 0 and dy != 0:
+            return self.COST_DIAG
+        return self.COST_LINE
+
+
+    def custo_minimo_volta_para_base(self):
+        """
+        Calcula o custo mínimo real para retornar para a base,
+        a partir da posição atual.
+        Base = (0, 0)
+        """
+
+        x, y = self.x, self.y
+        bx, by = 0, 0
+
+        dx = abs(bx - x)
+        dy = abs(by - y)
+
+        # número de passos diagonais possíveis
+        diag = min(dx, dy)
+
+        # passos restantes em linha reta
+        linha = abs(dx - dy)
+
+        # custo total mínimo
+        return diag * self.COST_DIAG + linha * self.COST_LINE
+
+    def is_visited(self, pos):
+        """Retorna True se a célula já foi explorada."""
+        return pos in self.walk_stack.items
+    
+    
+    def get_next_position(self):
+
+        ##  ---  escolhe o mapa  de acordo com o socorrista específico  ----
+
+        if self.NAME == 'RESCUER_1':
+            position = self.pedaco_mapa[0]
+        elif self.NAME == 'RESCUER_2':
+            position = self.pedaco_mapa[1]
+        else:
+            position = self.pedaco_mapa[2]
+
+        # chaves são (x,y)
+        keys = list(position.map_data.keys())
+
+        # acabou o mapa
+        if self.current_index >= len(keys):
+            return None
+
+        # pega a próxima posição (x, y)
+        prox = keys[self.current_index]
+
+        # avança o índice
+        self.current_index += 1
+
+        return prox
+
+
+    def go_save_victms(self):
+        prox = self.get_next_position()
+        if prox is None:
+            return
+
+        px, py = prox
+
+        # converte posição absoluta para movimento
+        dx = px - self.x
+        dy = py - self.y
+
+        # caso o movimento seja parado
+        if (dx, dy) == (0, 0):
+            if not self.walk_stack.is_empty():
+                last_dx, last_dy = self.walk_stack.pop()
+                result = self.walk(-last_dx, -last_dy)
+                if result == VS.EXECUTED:
+                    self.x -= last_dx
+                    self.y -= last_dy
+            return
+
+        # executa o passo
+        resultado = self.walk(dx, dy)
+
+        # guarda histórico
+        if resultado == VS.EXECUTED:
+            self.walk_stack.push((dx, dy))
+            self.x += dx
+            self.y += dy
+        else:
+            print(f"{self.NAME} walk failed in ({self.x}, {self.y})")
+
+
+    def come_back(self, to_pos=None):
+        """
+        agente volta.
+        """
+        if to_pos is None:
+            # se tiver vazio, so volta
+            if self.walk_stack.is_empty():
+                return
+
+            # tira da stack a ultima move
+            dx, dy = self.walk_stack.pop()
+
+            # inverte p voltar
+            voltar_x, voltar_y = -dx, -dy
+
+            # Executa o movimento de retorno
+            resultado = self.walk(voltar_x, voltar_y)
+
+            # realiza a volta
+            if resultado == VS.EXECUTED:
+                self.x += voltar_x
+                self.y += voltar_y
+            return
+
+        # volta p no anterior
+        desloc_x = to_pos[0] - self.x
+        desloc_y = to_pos[1] - self.y
+        resultado = self.walk(desloc_x, desloc_y)
+
+        # anda se for bem sucedido
+        if resultado == VS.EXECUTED:
+            self.x, self.y = to_pos
+
+
+
+     ##   ----     Copiei essa código do explorer    ----
+
 
     def deliberate(self) -> bool:
-        """This is the choice of the next action. The simulator calls this
-        method at each reasonning cycle if the agent is ACTIVE.
-        Must be implemented in every agent
-        @return True: there's one or more actions to do
-        @return False: there's no more action to do
-        """
+        # print('\n\n <<<<<  I N I C I A N D O   S O C O R R I S T A S >>>>> \n\n')
+        # Se ainda há fronteira e pode explorar → explorar
+        if self.continuar_explorando():
+            self.go_save_victms()
+            return True
+
+        print(f'SOCORRISTA {self.NAME} voltando para a base')
+
+
+
+        ##   ----     Essa lógica copiei tbm, mas ainda não terminei, pq não consegui 
+        # entender direito como que usa o 'frontier'    ----
+
+
+        if (self.x, self.y) != (0, 0):
+            # se tiver um no só, vai direto p base. caso contrario, ele vai p no anterior
+            volte = self._frontier[-2][0] if len(self._frontier) >= 2 else (0, 0)
+            # realiza um passo de volta, se chegou no no anterior, remove ele da parte de cima da pilha
+            self.come_back(to_pos=volte)
+            if (self.x, self.y) == volte:
+                self._frontier.pop()
+            return True
+
+        print(f'{self.NAME} FINISHED')
         return False
+
+
+
+
+    ##   ----     Copiei essa código do explorer   ---
+
+
+    def continuar_explorando(self):
+        """
+        Verifica se há bateria suficiente para:
+        - continuar explorando
+        - + voltar para a base com margem de segurança
+        """
+
+        # Custo mínimo de volta AGORA
+        custo_volta = self.custo_minimo_volta_para_base()
+
+        # quanto tempo resta
+        temp_rest = self.get_rtime()
+
+        # margem de segurança (ex.: 1.3 = 30% extra)
+        custo_necessario = custo_volta * self.margem_seguranca
+
+        return temp_rest >= custo_necessario
+
+   

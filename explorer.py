@@ -306,4 +306,5 @@ class Explorer(AbstAgent):
                 self.resc.go_save_victims(
                     self.map, self.victims
                 )  # objeto no estilo original
+
         return False
