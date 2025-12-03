@@ -3,7 +3,7 @@
 ### Demo of use of VictimSim
 ### Not a complete version of DFS; it comes back prematuraly
 ### to the base when it enters into a dead end position
-
+import time
 import os
 import csv
 import numpy as np
@@ -20,9 +20,6 @@ import random
 from queue import PriorityQueue
 
 # =========================== Utilitários de IO ===========================
-
-
-
 
 def carregar_base(path: str) -> Tuple[int, int]:
     """le a posição da base no x,y do arquivo env_config.txt"""
@@ -44,20 +41,6 @@ def carregar_base(path: str) -> Tuple[int, int]:
                         pass
                 break
     return bx, by
-
-
-
-
-##  ---   Não implementei ainda pq tava tentando fazer eles andarem e voltarem para a base -----
-
-def h_score():
-    """Calcula o h_score faltante"""
-    pass
-
-def aestrela():
- 
-    pass
-
 
 
 ##  ---    cria uma classe para empilhar as posições já visitadas para poder voltar
@@ -132,10 +115,7 @@ class Rescuer(AbstAgent):
 
 
         ##   ----  criei essas variáveis a mais, mas ainda não terminei  ----
-
-        self.plan = [] 
-        self.visitados = set()  # posições visitadas
-        self._frontier = []  # pilha de nós: [(pos, [vizinhos (ordem/cache)])]
+  
         self.custo_volta = 1.05  # margem para custo de volta
         self.margem_seguranca = 1.575  # margem de seguranca
 
@@ -143,8 +123,10 @@ class Rescuer(AbstAgent):
 
         self.x = 0
         self.y = 0
-        self.current_index = 0 
- 
+        self.current_index = 1
+
+        self.flag = True
+
     def recebe_mapa(self, explorer_name, part_map, part_victims):
         """
         o explorador entrega as info do mapa e vitimas que ele tem para os rescuers
@@ -364,24 +346,17 @@ class Rescuer(AbstAgent):
     
 
 
-    def custo_estimado_min(self, dx, dy):
-        """
-        Retorna o custo estimado para dar um passo
-        """
-        if dx != 0 and dy != 0:
-            return self.COST_DIAG
-        return self.COST_LINE
-
-
-    def custo_minimo_volta_para_base(self):
+    def calcula_custo(self, bx, by):
         """
         Calcula o custo mínimo real para retornar para a base,
         a partir da posição atual.
         Base = (0, 0)
         """
-
         x, y = self.x, self.y
-        bx, by = 0, 0
+
+        #volta para base, senão calcula outro destino que não seja a base
+        if bx == None or by == None:
+            bx, by = 0, 0
 
         dx = abs(bx - x)
         dy = abs(by - y)
@@ -394,11 +369,6 @@ class Rescuer(AbstAgent):
 
         # custo total mínimo
         return diag * self.COST_DIAG + linha * self.COST_LINE
-
-    def is_visited(self, pos):
-        """Retorna True se a célula já foi explorada."""
-        return pos in self.walk_stack.items
-    
     
     def get_next_position(self):
 
@@ -411,11 +381,21 @@ class Rescuer(AbstAgent):
         else:
             position = self.pedaco_mapa[2]
 
+        position = self.pedaco_mapa[1]
+
+        # print("\n--- DIR ---")
+        # print(dir(position))
+
+        # print("\n--- DICT ---")
+        # print(position.__dict__)
+
+        # time.sleep(10)
         # chaves são (x,y)
         keys = list(position.map_data.keys())
 
         # acabou o mapa
         if self.current_index >= len(keys):
+            print(' >>>>>>>>>>>>>>>>>    A   C  A   B  O  U      O      M  A  P   A  >>>>>>>>>>>>>>>>>')
             return None
 
         # pega a próxima posição (x, y)
@@ -425,39 +405,6 @@ class Rescuer(AbstAgent):
         self.current_index += 1
 
         return prox
-
-
-    def go_save_victms(self):
-        prox = self.get_next_position()
-        if prox is None:
-            return
-
-        px, py = prox
-
-        # converte posição absoluta para movimento
-        dx = px - self.x
-        dy = py - self.y
-
-        # caso o movimento seja parado
-        if (dx, dy) == (0, 0):
-            if not self.walk_stack.is_empty():
-                last_dx, last_dy = self.walk_stack.pop()
-                result = self.walk(-last_dx, -last_dy)
-                if result == VS.EXECUTED:
-                    self.x -= last_dx
-                    self.y -= last_dy
-            return
-
-        # executa o passo
-        resultado = self.walk(dx, dy)
-
-        # guarda histórico
-        if resultado == VS.EXECUTED:
-            self.walk_stack.push((dx, dy))
-            self.x += dx
-            self.y += dy
-        else:
-            print(f"{self.NAME} walk failed in ({self.x}, {self.y})")
 
 
     def come_back(self, to_pos=None):
@@ -484,51 +431,55 @@ class Rescuer(AbstAgent):
                 self.y += voltar_y
             return
 
-        # volta p no anterior
-        desloc_x = to_pos[0] - self.x
-        desloc_y = to_pos[1] - self.y
-        resultado = self.walk(desloc_x, desloc_y)
+    
+    def go_save_victms(self):
+        prox = self.get_next_position()
+        if prox is None:
+            print('RETORNOU -------- //////////////////////////')
+            return None
 
-        # anda se for bem sucedido
+        px, py = prox
+
+        # converte posição absoluta para movimento
+        dx = px - self.x
+        dy = py - self.y
+        
+        # caso o movimento seja parado
+        if (dx, dy) == (0, 0):
+            if not self.walk_stack.is_empty():
+                # print('\nBOOOOMMP :: ', self.x, self.y)
+                # print(last_dx, last_dy, '\n')
+                last_dx, last_dy = self.walk_stack.pop()
+             
+                result = self.walk(-last_dx, -last_dy)
+                if result == VS.EXECUTED:
+                    self.x -= last_dx
+                    self.y -= last_dy
+                    
+            # print('\nBOOOOMMP   SEM REMOVER NADA DA FILA :: ', self.x, self.y)
+            return True
+
+        if abs(dx) > 2 or abs(dy) > 2:
+            print('\n\n HOUVE UM ERRO AQUI MEU\n\n')
+            print(f'{self.NAME}_ pos_atual :: ', self.x, self.y, '   prox ::', prox)
+        
+            print('dx:: ', dx, 'dy::', dy)
+            
+        else:
+            print(f'{self.NAME}_ pos_atual :: ', self.x, self.y, '   prox ::', prox)
+
+        # executa o passo
+        resultado = self.walk(dx, dy)
+
+        # guarda histórico
         if resultado == VS.EXECUTED:
-            self.x, self.y = to_pos
-
-
-
-     ##   ----     Copiei essa código do explorer    ----
-
-
-    def deliberate(self) -> bool:
-        # print('\n\n <<<<<  I N I C I A N D O   S O C O R R I S T A S >>>>> \n\n')
-        # Se ainda há fronteira e pode explorar → explorar
-        if self.continuar_explorando():
-            self.go_save_victms()
+            self.x += dx
+            self.y += dy
+            self.walk_stack.push((self.x, self.y))
             return True
-
-        print(f'SOCORRISTA {self.NAME} voltando para a base')
-
-
-
-        ##   ----     Essa lógica copiei tbm, mas ainda não terminei, pq não consegui 
-        # entender direito como que usa o 'frontier'    ----
-
-
-        if (self.x, self.y) != (0, 0):
-            # se tiver um no só, vai direto p base. caso contrario, ele vai p no anterior
-            volte = self._frontier[-2][0] if len(self._frontier) >= 2 else (0, 0)
-            # realiza um passo de volta, se chegou no no anterior, remove ele da parte de cima da pilha
-            self.come_back(to_pos=volte)
-            if (self.x, self.y) == volte:
-                self._frontier.pop()
-            return True
-
-        print(f'{self.NAME} FINISHED')
-        return False
-
-
-
-
-    ##   ----     Copiei essa código do explorer   ---
+        else:
+            print(f"{self.NAME} walk failed in ({self.x}, {self.y})")
+        # print('pilha:: ', self.walk_stack.items)
 
 
     def continuar_explorando(self):
@@ -539,8 +490,8 @@ class Rescuer(AbstAgent):
         """
 
         # Custo mínimo de volta AGORA
-        custo_volta = self.custo_minimo_volta_para_base()
-
+        custo_volta = self.calcula_custo(None, None)
+        print('custo voltar :: ', self.calcula_custo(None, None), 'tempo restante ::: ', self.get_rtime())
         # quanto tempo resta
         temp_rest = self.get_rtime()
 
@@ -549,4 +500,50 @@ class Rescuer(AbstAgent):
 
         return temp_rest >= custo_necessario
 
-   
+    def deliberate(self) -> bool:
+        # print('\n\n <<<<<  I N I C I A N D O   S O C O R R I S T A S >>>>> \n\n')
+        # Se ainda há fronteira e pode explorar → explorar
+        self.aestrela()
+        return False
+        if self.flag and self.continuar_explorando():
+            # print(f'{self.NAME}antes:: ', self.get_rtime())
+            resp = self.go_save_victms()
+            if resp is None:
+                self.flag = False
+
+            # print(f'{self.NAME}depois:: ', self.get_rtime())
+            return True
+
+        print(f'SOCORRISTA {self.NAME} voltando para a base')
+
+        ##   ----     Essa lógica copiei tbm, mas ainda não terminei, pq não consegui 
+        # entender direito como que usa o 'frontier'    ----
+        if (self.x, self.y) != (0, 0):
+        
+            self.come_back()
+            
+            return True
+
+        print(f'{self.NAME} FINISHED')
+        return False
+
+
+    def h_score(self, destino):
+        """Calcula o h_score faltante"""
+        # self.calcula_custo()
+        linha = destino[0]
+        coluna = destino[1]
+
+        return abs(self.x - coluna) + abs(self.y - linha)
+
+    def aestrela(self):
+        print(self.map)
+        print(self.map.__dict__)
+        # f_score = {celula: float("inf") for celula in self.map[0].map_data.keys()}
+        # print(f_score)
+        # time.sleep()
+        # caminho = ""
+        # return caminho
+
+        pass
+
